@@ -2,24 +2,29 @@
 
 namespace App\Http\Controllers;
 
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Maatwebsite\Excel\Facades\Excel;
-use Maatwebsite\Excel\HeadingRowFormatter;
 use Maatwebsite\Excel\Concerns\ToArray;
+use Illuminate\Support\Facades\Storage;
 
 class ExcelToJsonController extends Controller
 {
     public function convert(Request $request)
     {
-        // Validate the uploaded Excel file
+        // Validasi file Excel yang diunggah
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls',
         ]);
 
-        // Get the uploaded file
+        // Mendapatkan file yang diunggah
         $file = $request->file('excel_file');
 
-        // Read the Excel file into an array
+        // Mendapatkan nama file asli dan mengganti ekstensi menjadi .json
+        $fileNameWithoutExtension = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
+        $jsonFileName = $fileNameWithoutExtension . '.json';
+
+        // Membaca file Excel menjadi array
         $data = Excel::toArray(new class implements ToArray {
             public function array(array $array)
             {
@@ -27,33 +32,37 @@ class ExcelToJsonController extends Controller
             }
         }, $file);
 
-        // Flatten the array (if necessary)
+        // Meratakan array (jika perlu)
         $data = array_merge(...$data);
 
-        // Extract headers and prepare the formatted data
+        // Menyiapkan data yang diformat
         $formattedData = [];
         if (!empty($data)) {
-            // Get headers from the first row
+            // Mengambil header dari baris pertama
             $headers = array_map('trim', array_shift($data));
 
             foreach ($data as $row) {
                 $rowData = [];
                 foreach ($row as $index => $value) {
-                    // Convert "NULL" string to null
+                    // Mengonversi string "NULL" menjadi null
                     if (strcasecmp($value, 'NULL') === 0) {
                         $value = null;
                     }
-                    // Convert numeric strings to integers (optional)
-                    if (is_numeric($value)) {
-                        $value = (int) $value; // Change this to (float) if you want to handle decimals
-                    }
-                    // Associate header with value
+                    // Menyusun data baris dengan header yang sesuai
                     $rowData[$headers[$index]] = $value;
                 }
-                $formattedData[] = $rowData; // Add the row to the formatted data
+                $formattedData[] = $rowData; // Menambahkan baris ke data yang diformat
             }
         }
-        // Return the JSON response
-        return response()->json($formattedData, 200);
+
+        // Mengonversi data menjadi JSON
+        $jsonContent = json_encode($formattedData, JSON_PRETTY_PRINT);
+
+        // Menyimpan file JSON sementara di server
+        $tempPath = storage_path('app/public/' . $jsonFileName);
+        file_put_contents($tempPath, $jsonContent);
+
+        // Mengunduh file JSON dengan nama yang sama seperti file Excel
+        return response()->download($tempPath)->deleteFileAfterSend(true);
     }
 }
