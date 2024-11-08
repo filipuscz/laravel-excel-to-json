@@ -48,6 +48,12 @@ class ExcelToJsonController extends Controller
                     if (strcasecmp($value, 'NULL') === 0) {
                         $value = null;
                     }
+                    if ($value === '-') {
+                        $value = null;
+                    }
+                    if ($value === '') {
+                        $value = null;
+                    }
                     // Menyusun data baris dengan header yang sesuai
                     $rowData[$headers[$index]] = $value;
                 }
