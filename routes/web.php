@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\CsvToJsonController;
+use App\Http\Controllers\ExcelToJsonSingleController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -13,6 +14,6 @@ Route::get('/convert', function () {
     return view('convert');
 });
 
-use App\Http\Controllers\ExcelToJsonController;
 
-Route::post('/convert-excel-to-json', [ExcelToJsonController::class, 'convert']);
+
+Route::post('/convert-excel-to-json', [ExcelToJsonSingleController::class, 'convert']);
