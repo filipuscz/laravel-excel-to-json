@@ -12,6 +12,7 @@ class ExcelToJsonController extends Controller
 {
     public function convert(Request $request)
     {
+        ini_set('memory_limit', '1G'); // Menambah batas memori menjadi 512MB
         // Validasi file Excel yang diunggah
         $request->validate([
             'excel_file' => 'required|file|mimes:xlsx,xls',
@@ -22,7 +23,6 @@ class ExcelToJsonController extends Controller
 
         // Mendapatkan nama file asli dan mengganti ekstensi menjadi .json
         $fileNameWithoutExtension = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
-        $jsonFileName = $fileNameWithoutExtension . '.json';
 
         // Membaca file Excel menjadi array
         $data = Excel::toArray(new class implements ToArray {
@@ -63,7 +63,6 @@ class ExcelToJsonController extends Controller
                     elseif ($value === '#N/A') {
                         $value = null;
                     }
-                    else $value;
                     // Menyusun data baris dengan header yang sesuai
                     $rowData[$headers[$index]] = $value;
                 }
@@ -71,14 +70,44 @@ class ExcelToJsonController extends Controller
             }
         }
 
-        // Mengonversi data menjadi JSON
-        $jsonContent = json_encode($formattedData, JSON_PRETTY_PRINT);
+        // Pisahkan data ke dalam batch 1000 baris
+        $batchSize = 1000;
+        $batches = array_chunk($formattedData, $batchSize);
 
-        // Menyimpan file JSON sementara di server
-        $tempPath = storage_path('app/public/' . $jsonFileName);
-        file_put_contents($tempPath, $jsonContent);
+        // Menyimpan setiap batch sebagai file JSON terpisah
+        $batchFilePaths = [];
+        foreach ($batches as $index => $batch) {
+            // Mengonversi data batch menjadi JSON
+            $jsonContent = json_encode($batch, JSON_PRETTY_PRINT);
 
-        // Mengunduh file JSON dengan nama yang sama seperti file Excel
-        return response()->download($tempPath)->deleteFileAfterSend(true);
+            // Menyimpan file JSON sementara di server
+            $batchFileName = $fileNameWithoutExtension . "_batch_" . ($index + 1) . ".json";
+            $tempPath = storage_path('app/public/' . $batchFileName);
+            file_put_contents($tempPath, $jsonContent);
+
+            // Simpan path file batch untuk diunduh
+            $batchFilePaths[] = $tempPath;
+        }
+
+        // Membuat file ZIP untuk mengunduh semua batch sekaligus
+        $zipFileName = $fileNameWithoutExtension . '.zip';
+        $zipFilePath = storage_path('app/public/' . $zipFileName);
+        $zip = new \ZipArchive();
+
+        if ($zip->open($zipFilePath, \ZipArchive::CREATE) === TRUE) {
+            // Menambahkan setiap batch ke dalam file ZIP
+            foreach ($batchFilePaths as $filePath) {
+                $zip->addFile($filePath, basename($filePath));
+            }
+            $zip->close();
+        }
+
+        // Menghapus file JSON sementara setelah membuat ZIP
+        foreach ($batchFilePaths as $filePath) {
+            unlink($filePath);
+        }
+
+        // Mengunduh file ZIP
+        return response()->download($zipFilePath)->deleteFileAfterSend(true);
     }
 }
